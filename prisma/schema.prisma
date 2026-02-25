@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ACCOUNTANT
+  VIEWER
+}
+
+enum TransactionType {
+  income
+  expense
+}
+
+enum ImportStatus {
+  pending
+  success
+  failed
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(VIEWER)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  companies     Company[]
+  transactions  Transaction[]
+  importJobs    ImportJob[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int      @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String
+  ownerId   Int      @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner        User          @relation(fields: [ownerId], references: [id])
+  categories   Category[]
+  transactions Transaction[]
+  importJobs   ImportJob[]
+
+  @@map("companies")
+}
+
+model Category {
+  id        Int             @id @default(autoincrement())
+  companyId Int             @map("company_id")
+  type      TransactionType
+  name      String
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([companyId, name, type])
+  @@map("categories")
+}
+
+model Transaction {
+  id         Int             @id @default(autoincrement())
+  companyId  Int             @map("company_id")
+  categoryId Int             @map("category_id")
+  type       TransactionType
+  amount     Decimal         @db.Decimal(15, 2)
+  currency   String          @default("KZT")
+  date       DateTime        @db.Date
+  comment    String?
+  createdBy  Int             @map("created_by")
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+  creator  User     @relation(fields: [createdBy], references: [id])
+
+  @@index([companyId, date])
+  @@index([companyId, type])
+  @@index([companyId, categoryId])
+  @@map("transactions")
+}
+
+model ImportJob {
+  id          Int          @id @default(autoincrement())
+  companyId   Int          @map("company_id")
+  userId      Int          @map("user_id")
+  status      ImportStatus @default(pending)
+  fileName    String       @map("file_name")
+  totalRows   Int          @default(0) @map("total_rows")
+  successRows Int          @default(0) @map("success_rows")
+  failedRows  Int          @default(0) @map("failed_rows")
+  errors      Json?
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("import_jobs")
+}
